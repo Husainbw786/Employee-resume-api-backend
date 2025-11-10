@@ -47,8 +47,7 @@ class ATSScorer:
             
             response = self.client.responses.create(
                 model=self.model,
-                input=combined_input,
-                reasoning={ "effort": "minimal" }
+                input=combined_input
             )
             
             # Parse the response
