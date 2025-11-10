@@ -122,6 +122,59 @@ def read_pdf_from_url(url: str) -> str:
         return ""
 
 
+def extract_text_from_url(url: str) -> str:
+    """
+    Extract raw text content from resume URL
+    
+    Args:
+        url: URL of the resume file (supports PDF, DOCX, and Google Docs)
+        
+    Returns:
+        Extracted text content
+    """
+    try:
+        # Handle Google Docs Viewer URLs (gview)
+        if 'docs.google.com/gview' in url:
+            # Extract the actual document URL from the gview parameter
+            url_match = re.search(r'url=([^&]+)', url)
+            if url_match:
+                actual_url = url_match.group(1)
+                # URL decode if necessary
+                from urllib.parse import unquote
+                actual_url = unquote(actual_url)
+                logger.info(f"Extracted actual URL from gview: {actual_url}")
+                # Recursively call with the actual URL
+                return extract_text_from_url(actual_url)
+        
+        # Handle Google Docs URLs
+        if 'docs.google.com' in url:
+            # Convert Google Docs view/edit URL to export URL
+            if '/edit' in url or '/view' in url:
+                doc_id_match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                if doc_id_match:
+                    doc_id = doc_id_match.group(1)
+                    # Export as PDF
+                    export_url = f'https://docs.google.com/document/d/{doc_id}/export?format=pdf'
+                    text = read_pdf_from_url(export_url)
+                    if text:
+                        return text
+        
+        # Read resume content based on file type
+        if url.lower().endswith('.docx') or 'export?format=docx' in url.lower():
+            text = read_docx_from_url(url)
+        elif url.lower().endswith('.pdf') or 'export?format=pdf' in url.lower():
+            text = read_pdf_from_url(url)
+        else:
+            logger.warning(f"Unsupported file format: {url}")
+            return ""
+        
+        return text if text else ""
+        
+    except Exception as e:
+        logger.error(f"Error extracting text from {url}: {str(e)}")
+        return ""
+
+
 def extract_resume_info(url: str) -> Dict[str, str]:
     """
     Extract information from resume URL
@@ -133,20 +186,8 @@ def extract_resume_info(url: str) -> Dict[str, str]:
         Dictionary with extracted information
     """
     try:
-        # Read resume content based on file type
-        if url.lower().endswith('.docx'):
-            text = read_docx_from_url(url)
-        elif url.lower().endswith('.pdf'):
-            text = read_pdf_from_url(url)
-        else:
-            logger.warning(f"Unsupported file format: {url}")
-            return {
-                "email": "",
-                "contact_number": "",
-                "linkedin_url": "",
-                "skills": "",
-                "position": ""
-            }
+        # Extract text from URL
+        text = extract_text_from_url(url)
         
         if not text:
             return {
