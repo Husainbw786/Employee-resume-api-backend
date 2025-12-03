@@ -1,12 +1,33 @@
 import re
+import os
+import json
 import logging
 import requests
 from typing import Dict, Optional
 from io import BytesIO
 from docx import Document
 from PyPDF2 import PdfReader
+from openai import OpenAI
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+# Initialize OpenAI client
+_openai_client = None
+
+
+def _get_openai_client():
+    """Get or initialize OpenAI client"""
+    global _openai_client
+    if _openai_client is None:
+        openai_api_key = os.getenv("OPENAI_API_KEY")
+        if not openai_api_key:
+            raise ValueError("OPENAI_API_KEY environment variable is required")
+        _openai_client = OpenAI(api_key=openai_api_key)
+    return _openai_client
 
 
 def extract_email(text: str) -> Optional[str]:
@@ -264,7 +285,7 @@ def extract_text_from_url(url: str) -> str:
 
 def extract_resume_info(url: str) -> Dict[str, str]:
     """
-    Extract information from resume URL
+    Extract information from resume URL using OpenAI GPT-4o-mini
     
     Args:
         url: URL of the resume file
@@ -287,19 +308,59 @@ def extract_resume_info(url: str) -> Dict[str, str]:
                 "total_experience": ""
             }
         
-        # Extract information
-        return {
-            "name": extract_name(text),
-            "email": extract_email(text),
-            "contact_number": extract_phone(text),
-            "linkedin_url": extract_linkedin(text),
-            "skills": extract_skills(text),
-            "position": extract_position(text),
-            "total_experience": extract_experience(text)
+        # Use OpenAI to extract structured information
+        client = _get_openai_client()
+        
+        prompt = f"""Extract the following information from this resume and return it as a JSON object with these exact keys:
+- name: Full name of the candidate
+- email: Email address
+- contact_number: Phone number (with country code if available)
+- linkedin_url: LinkedIn profile URL (complete URL with https://)
+- skills: Comma-separated list of technical skills (max 15 most relevant)
+- position: Current or most recent job title/position
+- total_experience: Total years of professional experience (just the number, e.g., "5" or "5.5")
+
+Rules:
+- Return ONLY valid JSON, no additional text
+- If a field is not found, use an empty string ""
+- For skills, prioritize technical skills and frameworks
+- For total_experience, if you see ranges like "5+ years", use "5"; if you see "3-5 years", use "5"
+- Make sure the name is properly capitalized
+
+Resume text:
+{text[:4000]}"""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "You are a resume parsing assistant. Extract information accurately and return only valid JSON."},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+            max_tokens=500,
+            response_format={"type": "json_object"}
+        )
+        
+        # Parse the JSON response
+        result = json.loads(response.choices[0].message.content)
+        
+        # Ensure all required fields are present
+        extracted_info = {
+            "name": result.get("name", ""),
+            "email": result.get("email", ""),
+            "contact_number": result.get("contact_number", ""),
+            "linkedin_url": result.get("linkedin_url", ""),
+            "skills": result.get("skills", ""),
+            "position": result.get("position", ""),
+            "total_experience": result.get("total_experience", "")
         }
+        
+        logger.info(f"Successfully extracted info using OpenAI: {extracted_info.get('name', 'Unknown')}")
+        return extracted_info
         
     except Exception as e:
         logger.error(f"Error extracting resume info from {url}: {str(e)}")
+        # Fallback to empty values
         return {
             "name": "",
             "email": "",
