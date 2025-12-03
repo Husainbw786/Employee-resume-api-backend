@@ -135,23 +135,27 @@ def search_candidates(job_description: str, count: int = 10) -> List[Dict]:
             text_length = metadata.get("text_length", 0)
             
             # Try to get additional info from metadata first
+            name = metadata.get("name", "")
             skills = metadata.get("skills", "")
             linkedin_url = metadata.get("linkedin_url", "")
             email = metadata.get("email", "")
             contact_number = metadata.get("contact_number", "")
             position = metadata.get("position", "")
+            total_experience = metadata.get("total_experience", "")
             
             # If metadata doesn't have the info and URL is available, extract from resume
-            if url and not all([skills, linkedin_url, email, contact_number, position]):
+            if url and not all([name, skills, linkedin_url, email, contact_number, position, total_experience]):
                 logger.info(f"Extracting info from resume: {filename}")
                 extracted_info = extract_resume_info(url)
                 
                 # Use extracted info if metadata is empty
+                name = name or extracted_info.get("name", "")
                 skills = skills or extracted_info.get("skills", "")
                 linkedin_url = linkedin_url or extracted_info.get("linkedin_url", "")
                 email = email or extracted_info.get("email", "")
                 contact_number = contact_number or extracted_info.get("contact_number", "")
                 position = position or extracted_info.get("position", "")
+                total_experience = total_experience or extracted_info.get("total_experience", "")
             
             candidates.append({
                 "filename": filename,
@@ -159,11 +163,13 @@ def search_candidates(job_description: str, count: int = 10) -> List[Dict]:
                 "url": url,
                 "view_url": view_url,
                 "text_length": text_length,
+                "name": name,
                 "skills": skills,
                 "linkedin_url": linkedin_url,
                 "email": email,
                 "contact_number": contact_number,
-                "position": position
+                "position": position,
+                "total_experience": total_experience
             })
         
         logger.info(f"Found {len(candidates)} candidates")
